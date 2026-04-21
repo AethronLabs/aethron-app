@@ -1,0 +1,51 @@
+export const darkColors = {
+  bg: '#0a0a0a',
+  bg2: '#111111',
+  bg3: '#161616',
+  surface: '#0f0f0f',
+  border: 'rgba(255,255,255,0.08)',
+  borderStrong: 'rgba(255,255,255,0.13)',
+  text: '#e2e2e2',
+  textStrong: '#f0f0f0',
+  textMid: '#888888',
+  textDim: '#555555',
+  accent: '#00c97a',
+  accentDim: 'rgba(0,201,122,0.15)',
+  red: '#ff5555',
+  redDim: 'rgba(255,85,85,0.12)',
+  // Win98 bevel
+  bevelLight: 'rgba(255,255,255,0.18)',
+  bevelDark: 'rgba(0,0,0,0.6)',
+  bevelLightStrong: 'rgba(255,255,255,0.45)',
+  bevelDarkStrong: 'rgba(0,0,0,0.4)',
+  inputBg: '#0a0a0a',
+  inputBevelDark: 'rgba(0,0,0,0.6)',
+  inputBevelLight: 'rgba(255,255,255,0.07)',
+};
+
+export const lightColors = {
+  bg: '#f0f0f0',
+  bg2: '#e8e8e8',
+  bg3: '#dcdcdc',
+  surface: '#f5f5f5',
+  border: 'rgba(0,0,0,0.09)',
+  borderStrong: 'rgba(0,0,0,0.15)',
+  text: '#1a1a1a',
+  textStrong: '#0a0a0a',
+  textMid: '#555555',
+  textDim: '#999999',
+  accent: '#009e5f',
+  accentDim: 'rgba(0,158,95,0.12)',
+  red: '#cc2222',
+  redDim: 'rgba(204,34,34,0.08)',
+  // Win98 bevel — classic gray
+  bevelLight: '#ffffff',
+  bevelDark: '#808080',
+  bevelLightStrong: '#ffffff',
+  bevelDarkStrong: '#404040',
+  inputBg: '#ffffff',
+  inputBevelDark: '#808080',
+  inputBevelLight: '#ffffff',
+};
+
+export const getColors = (theme) => theme === 'dark' ? darkColors : lightColors;
