@@ -146,7 +146,12 @@ export default function ProjectDetailScreen() {
           onSpecUploaded={loadProject}
         />
       )}
-      {activeTab === 'COMMANDS' && <CommandsTab projectId={projectId} />}
+      {activeTab === 'COMMANDS' && (
+        <CommandsTab
+          projectId={projectId}
+          projectSlug={project?.name ?? projectName}
+        />
+      )}
       {activeTab === 'BUILD' && (
         <BuildTab projectId={projectId} navigate={navigate} />
       )}
@@ -157,9 +162,26 @@ export default function ProjectDetailScreen() {
 function SpecTab({ projectId, project, onSpecUploaded }) {
   const { colors } = useTheme();
   const [specText, setSpecText] = useState('');
+  const [loadingSpec, setLoadingSpec] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    loadExistingSpec();
+  }, [projectId]);
+
+  const loadExistingSpec = async () => {
+    setLoadingSpec(true);
+    try {
+      const data = await api.getSpec(projectId);
+      const raw = typeof data === 'string'
+        ? data
+        : data.spec ?? data.content ?? data.source ?? null;
+      if (raw) setSpecText(raw);
+    } catch {}
+    setLoadingSpec(false);
+  };
 
   const handleUpload = async () => {
     if (!specText.trim()) {
@@ -186,17 +208,52 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
       contentContainerStyle={{ padding: 20 }}
       keyboardShouldPersistTaps="handled"
     >
-      <Text
+      <View
         style={{
-          color: colors.textDim,
-          fontFamily: 'monospace',
-          fontSize: 9,
-          letterSpacing: 2,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
           marginBottom: 10,
         }}
       >
-        PASTE OPENAPI SPEC (YAML OR JSON)
-      </Text>
+        <Text
+          style={{
+            color: colors.textDim,
+            fontFamily: 'monospace',
+            fontSize: 9,
+            letterSpacing: 2,
+          }}
+        >
+          OPENAPI SPEC (YAML OR JSON)
+        </Text>
+        {loadingSpec ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : specText ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: colors.accentDim,
+              borderWidth: 1,
+              borderColor: 'rgba(0,201,122,0.3)',
+              paddingHorizontal: 7,
+              paddingVertical: 3,
+            }}
+          >
+            <Feather name="check" size={9} color={colors.accent} />
+            <Text
+              style={{
+                color: colors.accent,
+                fontFamily: 'monospace',
+                fontSize: 9,
+              }}
+            >
+              spec loaded
+            </Text>
+          </View>
+        ) : null}
+      </View>
 
       <View
         style={{
@@ -213,6 +270,7 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
           value={specText}
           onChangeText={setSpecText}
           multiline
+          editable={!loadingSpec}
           style={{
             color: colors.text,
             fontFamily: 'monospace',
@@ -300,7 +358,17 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
   );
 }
 
-function CommandsTab({ projectId }) {
+function buildUsage(slug, cmd) {
+  const parts = [slug ?? 'cli'];
+  if (cmd.command_name) parts.push(cmd.command_name);
+  if (cmd.subcommand && cmd.subcommand !== cmd.command_name) parts.push(cmd.subcommand);
+  if (cmd.flags?.length) {
+    cmd.flags.forEach((f) => parts.push(`--${f.name} <${f.name}>`));
+  }
+  return parts.join(' ');
+}
+
+function CommandsTab({ projectId, projectSlug }) {
   const { colors } = useTheme();
   const [commands, setCommands] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -465,17 +533,46 @@ function CommandsTab({ projectId }) {
                         sub: {cmd.subcommand}
                       </Text>
                     ) : null}
+
+                    {/* Usage string */}
+                    <View
+                      style={{
+                        backgroundColor: colors.bg3,
+                        borderWidth: 1,
+                        borderTopColor: colors.bevelDark,
+                        borderLeftColor: colors.bevelDark,
+                        borderBottomColor: colors.bevelLight,
+                        borderRightColor: colors.bevelLight,
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
+                        marginTop: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.textMid,
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          lineHeight: 16,
+                        }}
+                        numberOfLines={2}
+                      >
+                        <Text style={{ color: colors.accent }}>$ </Text>
+                        {buildUsage(projectSlug, cmd)}
+                      </Text>
+                    </View>
+
                     {cmd.flags?.length > 0 ? (
                       <Text
                         style={{
                           color: colors.textDim,
                           fontFamily: 'monospace',
                           fontSize: 9,
-                          marginTop: 2,
+                          marginTop: 4,
                         }}
                         numberOfLines={2}
                       >
-                        {cmd.flags.map((f) => `--${f.name}`).join('  ')}
+                        {cmd.flags.map((f) => `--${f.name}${f.required ? '' : '?'}`).join('  ')}
                       </Text>
                     ) : null}
                   </View>

@@ -68,6 +68,7 @@ export const api = {
   getProject: (id) => req(`/projects/${id}`),
   deleteProject: (id) => req(`/projects/${id}`, { method: 'DELETE' }),
 
+  getSpec: (id) => req(`/projects/${id}/spec`),
   uploadSpec: (id, text) => {
     const form = new FormData();
     form.append('file', text);
