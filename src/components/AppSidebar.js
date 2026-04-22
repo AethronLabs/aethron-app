@@ -33,7 +33,11 @@ import Win98Input from './Win98Input';
 export function AppSidebar() {
   const { open } = useSidebar();
   const { theme, toggle, colors } = useTheme();
-  const { screen, params, navigate } = useNavigation();
+  const { screen, params, navigate, newProjectSeq } = useNavigation();
+
+  useEffect(() => {
+    if (newProjectSeq > 0) setShowNewProject(true);
+  }, [newProjectSeq]);
 
   const [projects, setProjects] = useState([]);
   const [user, setUser] = useState(null);
