@@ -179,7 +179,7 @@ function tokenizeSource(code) {
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
-export default function RustCodeViewer({ code, filename = 'main.rs' }) {
+export default function RustCodeViewer({ code, filename = 'main.rs', onDownload }) {
   const { colors } = useTheme();
 
   const tokenizedLines = useMemo(() => tokenizeSource(code), [code]);
@@ -238,50 +238,66 @@ export default function RustCodeViewer({ code, filename = 'main.rs' }) {
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={handleShare}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 5,
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderWidth: 1,
-            borderTopColor: colors.bevelLight,
-            borderLeftColor: colors.bevelLight,
-            borderBottomColor: colors.bevelDark,
-            borderRightColor: colors.bevelDark,
-            backgroundColor: colors.bg3,
-          }}
-        >
-          <Feather name="share-2" size={10} color={colors.textMid} />
-          <Text
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {onDownload ? (
+            <TouchableOpacity
+              onPress={onDownload}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderWidth: 1,
+                borderTopColor: colors.bevelLight,
+                borderLeftColor: colors.bevelLight,
+                borderBottomColor: colors.bevelDark,
+                borderRightColor: colors.bevelDark,
+                backgroundColor: colors.bg3,
+              }}
+            >
+              <Feather name="download" size={10} color={colors.textMid} />
+              <Text style={{ color: colors.textMid, fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>
+                Download
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            onPress={handleShare}
             style={{
-              color: colors.textMid,
-              fontFamily: 'monospace',
-              fontSize: 9,
-              letterSpacing: 0.5,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderWidth: 1,
+              borderTopColor: colors.bevelLight,
+              borderLeftColor: colors.bevelLight,
+              borderBottomColor: colors.bevelDark,
+              borderRightColor: colors.bevelDark,
+              backgroundColor: colors.bg3,
             }}
           >
-            Share
-          </Text>
-        </TouchableOpacity>
+            <Feather name="share-2" size={10} color={colors.textMid} />
+            <Text style={{ color: colors.textMid, fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>
+              Share
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Code area ── */}
       <ScrollView
         horizontal
-        showsHorizontalScrollIndicator
+        showsHorizontalScrollIndicator={false}
         bounces={false}
         style={{ backgroundColor: C.bg }}
-        indicatorStyle="white"
       >
         <View style={{ width: contentWidth }}>
           <ScrollView
             nestedScrollEnabled
-            showsVerticalScrollIndicator
+            showsVerticalScrollIndicator={false}
             style={{ maxHeight: 420 }}
-            indicatorStyle="white"
             contentContainerStyle={{ paddingVertical: 10 }}
           >
             {tokenizedLines.map((lineTokens, lineIdx) => (

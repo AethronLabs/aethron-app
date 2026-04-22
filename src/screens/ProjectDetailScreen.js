@@ -14,6 +14,7 @@ import { Platform } from 'react-native';
 import { api, getAuthHeaders, BASE_URL } from '../utils/api';
 import Win98Button from '../components/Win98Button';
 import RustCodeViewer from '../components/RustCodeViewer';
+import ShimmerText from '../components/ShimmerText';
 
 const TABS = ['SPEC', 'COMMANDS', 'BUILD'];
 
@@ -25,6 +26,7 @@ export default function ProjectDetailScreen() {
   const [activeTab, setActiveTab] = useState('SPEC');
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [generateCommandsOnMount, setGenerateCommandsOnMount] = useState(false);
 
   useEffect(() => {
     loadProject();
@@ -89,18 +91,40 @@ export default function ProjectDetailScreen() {
           </Text>
         </TouchableOpacity>
 
-        <Text
-          style={{
-            color: colors.textStrong,
-            fontFamily: 'monospace',
-            fontSize: 15,
-            fontWeight: '700',
-            marginBottom: 16,
-          }}
-          numberOfLines={1}
-        >
-          {projectName ?? project?.name ?? 'Project'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <Text
+            style={{
+              color: colors.textStrong,
+              fontFamily: 'monospace',
+              fontSize: 15,
+              fontWeight: '700',
+              flex: 1,
+            }}
+            numberOfLines={1}
+          >
+            {projectName ?? project?.name ?? 'Project'}
+          </Text>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                await api.deleteProject(projectId);
+                navigate('dashboard');
+              } catch {}
+            }}
+            style={{
+              padding: 7,
+              borderWidth: 1,
+              borderTopColor: colors.bevelLight,
+              borderLeftColor: colors.bevelLight,
+              borderBottomColor: colors.bevelDark,
+              borderRightColor: colors.bevelDark,
+              backgroundColor: colors.bg3,
+              marginLeft: 12,
+            }}
+          >
+            <Feather name="trash-2" size={12} color={colors.red ?? '#ff5555'} />
+          </TouchableOpacity>
+        </View>
 
         {/* Win98-style tabs */}
         <View style={{ flexDirection: 'row', gap: 2 }}>
@@ -145,12 +169,19 @@ export default function ProjectDetailScreen() {
           projectId={projectId}
           project={project}
           onSpecUploaded={loadProject}
+          onGoToCommands={() => {
+            setGenerateCommandsOnMount(true);
+            setActiveTab('COMMANDS');
+          }}
         />
       )}
       {activeTab === 'COMMANDS' && (
         <CommandsTab
           projectId={projectId}
           projectSlug={project?.name ?? projectName}
+          onGoToBuild={() => setActiveTab('BUILD')}
+          generateOnMount={generateCommandsOnMount}
+          onGenerateDone={() => setGenerateCommandsOnMount(false)}
         />
       )}
       {activeTab === 'BUILD' && (
@@ -160,13 +191,13 @@ export default function ProjectDetailScreen() {
   );
 }
 
-function SpecTab({ projectId, project, onSpecUploaded }) {
+function SpecTab({ projectId, project, onSpecUploaded, onGoToCommands }) {
   const { colors } = useTheme();
   const [specText, setSpecText] = useState('');
   const [loadingSpec, setLoadingSpec] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [specSaved, setSpecSaved] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     loadExistingSpec();
@@ -179,22 +210,18 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
       const raw = typeof data === 'string'
         ? data
         : data.spec ?? data.content ?? data.source ?? null;
-      if (raw) setSpecText(raw);
+      if (raw) { setSpecText(raw); setSpecSaved(true); }
     } catch {}
     setLoadingSpec(false);
   };
 
   const handleUpload = async () => {
-    if (!specText.trim()) {
-      setError('Paste your OpenAPI spec above.');
-      return;
-    }
+    if (!specText.trim()) { setError('Paste your OpenAPI spec above.'); return; }
     setUploading(true);
     setError('');
-    setSuccess('');
     try {
       await api.uploadSpec(projectId, specText.trim());
-      setSuccess('Spec uploaded — commands generated. Switch to the COMMANDS tab.');
+      setSpecSaved(true);
       onSpecUploaded();
     } catch (e) {
       setError(e.message);
@@ -203,12 +230,45 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
     }
   };
 
+  const handleGenerateCommands = () => {
+    onGoToCommands();
+  };
+
   return (
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ padding: 20 }}
       keyboardShouldPersistTaps="handled"
     >
+      {/* Step indicators */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+        {[
+          { n: '01', label: 'Save Spec', done: specSaved },
+          { n: '02', label: 'Generate Commands', done: false },
+        ].map((s, i) => (
+          <View
+            key={s.n}
+            style={{
+              flex: 1,
+              backgroundColor: s.done ? colors.accentDim : colors.bg2,
+              borderWidth: 1,
+              borderColor: s.done ? 'rgba(0,201,122,0.35)' : colors.border,
+              padding: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Text style={{ color: s.done ? colors.accent : colors.textDim, fontFamily: 'monospace', fontSize: 9, fontWeight: '700' }}>
+              {s.done ? '✓' : s.n}
+            </Text>
+            <Text style={{ color: s.done ? colors.accent : colors.textDim, fontFamily: 'monospace', fontSize: 10 }}>
+              {s.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+
       <View
         style={{
           flexDirection: 'row',
@@ -217,41 +277,15 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
           marginBottom: 10,
         }}
       >
-        <Text
-          style={{
-            color: colors.textDim,
-            fontFamily: 'monospace',
-            fontSize: 9,
-            letterSpacing: 2,
-          }}
-        >
+        <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 2 }}>
           OPENAPI SPEC (YAML OR JSON)
         </Text>
         {loadingSpec ? (
           <ActivityIndicator size="small" color={colors.accent} />
-        ) : specText ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              backgroundColor: colors.accentDim,
-              borderWidth: 1,
-              borderColor: 'rgba(0,201,122,0.3)',
-              paddingHorizontal: 7,
-              paddingVertical: 3,
-            }}
-          >
+        ) : specSaved ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: 'rgba(0,201,122,0.3)', paddingHorizontal: 7, paddingVertical: 3 }}>
             <Feather name="check" size={9} color={colors.accent} />
-            <Text
-              style={{
-                color: colors.accent,
-                fontFamily: 'monospace',
-                fontSize: 9,
-              }}
-            >
-              spec loaded
-            </Text>
+            <Text style={{ color: colors.accent, fontFamily: 'monospace', fontSize: 9 }}>saved</Text>
           </View>
         ) : null}
       </View>
@@ -269,7 +303,7 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
       >
         <TextInput
           value={specText}
-          onChangeText={setSpecText}
+          onChangeText={(t) => { setSpecText(t); setSpecSaved(false); }}
           multiline
           editable={!loadingSpec}
           style={{
@@ -290,69 +324,30 @@ function SpecTab({ projectId, project, onSpecUploaded }) {
       </View>
 
       {error ? (
-        <View
-          style={{
-            backgroundColor: colors.redDim,
-            borderWidth: 1,
-            borderColor: 'rgba(255,85,85,0.3)',
-            padding: 8,
-            marginBottom: 12,
-          }}
-        >
-          <Text
-            style={{
-              color: colors.red,
-              fontFamily: 'monospace',
-              fontSize: 10,
-            }}
-          >
-            ⚠ {error}
-          </Text>
+        <View style={{ backgroundColor: colors.redDim, borderWidth: 1, borderColor: 'rgba(255,85,85,0.3)', padding: 8, marginBottom: 12 }}>
+          <Text style={{ color: colors.red, fontFamily: 'monospace', fontSize: 10 }}>⚠ {error}</Text>
         </View>
       ) : null}
 
-      {success ? (
-        <View
-          style={{
-            backgroundColor: colors.accentDim,
-            borderWidth: 1,
-            borderColor: 'rgba(0,201,122,0.3)',
-            padding: 8,
-            marginBottom: 12,
-          }}
-        >
-          <Text
-            style={{
-              color: colors.accent,
-              fontFamily: 'monospace',
-              fontSize: 10,
-            }}
-          >
-            ✓ {success}
-          </Text>
-        </View>
-      ) : null}
-
-      <View style={{ alignItems: 'flex-end' }}>
+      {/* Action buttons */}
+      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
         <Win98Button
-          title="Upload & Generate →"
+          title={specSaved ? 'Re-upload Spec' : 'Save Spec'}
+          variant="secondary"
           onPress={handleUpload}
           loading={uploading}
+          icon={<Feather name="upload" size={12} color={colors.textMid} />}
+        />
+        <Win98Button
+          title="Generate Commands →"
+          onPress={handleGenerateCommands}
+          disabled={!specSaved}
         />
       </View>
 
       {project?.spec_uploaded_at ? (
-        <Text
-          style={{
-            color: colors.textDim,
-            fontFamily: 'monospace',
-            fontSize: 9,
-            letterSpacing: 1,
-            marginTop: 16,
-          }}
-        >
-          LAST UPLOADED:{' '}
-          {new Date(project.spec_uploaded_at).toLocaleString()}
+        <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 1, marginTop: 16 }}>
+          LAST SAVED: {new Date(project.spec_uploaded_at).toLocaleString()}
         </Text>
       ) : null}
     </ScrollView>
@@ -369,17 +364,41 @@ function buildUsage(slug, cmd) {
   return parts.join(' ');
 }
 
-function CommandsTab({ projectId, projectSlug }) {
+function CommandsTab({ projectId, projectSlug, onGoToBuild, generateOnMount, onGenerateDone }) {
   const { colors } = useTheme();
   const [commands, setCommands] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
+  const [generateError, setGenerateError] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadCommands();
+    if (generateOnMount) {
+      runGenerate();
+    } else {
+      loadCommands();
+    }
   }, [projectId]);
+
+  const runGenerate = async () => {
+    setLoading(false);
+    setGenerating(true);
+    setGenerateError('');
+    try {
+      await api.generateCommands(projectId);
+      onGenerateDone?.();
+      await loadCommands();
+    } catch (e) {
+      setGenerateError(e.message);
+      onGenerateDone?.();
+      await loadCommands();
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const loadCommands = async () => {
     setLoading(true);
@@ -402,10 +421,27 @@ function CommandsTab({ projectId, projectSlug }) {
 
   if (loading) {
     return (
-      <ActivityIndicator
-        color={colors.accent}
-        style={{ marginTop: 32 }}
-      />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (generating) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+        <ActivityIndicator color={colors.accent} />
+        <ShimmerText text="Generating commands with AI…" />
+      </View>
+    );
+  }
+
+  if (generatingCode) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+        <ActivityIndicator color={colors.accent} />
+        <ShimmerText text="Generating Rust CLI with AI…" />
+      </View>
     );
   }
 
@@ -414,6 +450,12 @@ function CommandsTab({ projectId, projectSlug }) {
       style={{ flex: 1 }}
       contentContainerStyle={{ padding: 20 }}
     >
+      {generateError ? (
+        <View style={{ backgroundColor: colors.redDim, borderWidth: 1, borderColor: 'rgba(255,85,85,0.3)', padding: 8, marginBottom: 14 }}>
+          <Text style={{ color: colors.red, fontFamily: 'monospace', fontSize: 10 }}>⚠ {generateError}</Text>
+        </View>
+      ) : null}
+
       <Text
         style={{
           color: colors.textDim,
@@ -600,15 +642,158 @@ function CommandsTab({ projectId, projectSlug }) {
           ))}
         </View>
       )}
+
+      {/* Generate Code CTA */}
+      {commands.length > 0 ? (
+        <View style={{ marginTop: 20, gap: 10 }}>
+          <View style={{ height: 1, backgroundColor: colors.border }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ gap: 2 }}>
+              <Text style={{ color: colors.textStrong, fontFamily: 'monospace', fontSize: 11, fontWeight: '700' }}>
+                Happy with the commands?
+              </Text>
+              <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 10 }}>
+                AI will generate a Rust CLI from these
+              </Text>
+            </View>
+            <Win98Button
+              title="Generate Code →"
+              onPress={async () => {
+                setGeneratingCode(true);
+                try {
+                  await api.generateCode(projectId);
+                  onGoToBuild();
+                } catch (e) {
+                  setGenerateError(e.message);
+                  setGeneratingCode(false);
+                }
+              }}
+              loading={generatingCode}
+            />
+          </View>
+        </View>
+      ) : null}
     </ScrollView>
   );
+}
+
+function TomlViewer({ code, onDownload }) {
+  const lines = code.split('\n');
+  const gutterWidth = String(lines.length).length * 9 + 16;
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderTopColor: '#1a1a1a',
+        borderLeftColor: '#1a1a1a',
+        borderBottomColor: '#333',
+        borderRightColor: '#333',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Title bar */}
+      <View
+        style={{
+          backgroundColor: '#1a1a1a',
+          borderBottomWidth: 1,
+          borderBottomColor: '#222',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 12,
+          paddingVertical: 7,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 8, height: 8, backgroundColor: '#e5c07b' }} />
+          <Text style={{ color: '#4b5263', fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>
+            Cargo.toml — {lines.length} {lines.length === 1 ? 'line' : 'lines'}
+          </Text>
+        </View>
+        {onDownload ? (
+          <TouchableOpacity
+            onPress={onDownload}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}
+          >
+            <Feather name="download" size={10} color="#7a8694" />
+            <Text style={{ color: '#7a8694', fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>Download</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        style={{ backgroundColor: '#050505' }}
+      >
+        <ScrollView
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          style={{ maxHeight: 420 }}
+          contentContainerStyle={{ paddingVertical: 10 }}
+        >
+          {lines.map((line, i) => {
+            const isSection = /^\s*\[/.test(line);
+            const isComment = /^\s*#/.test(line);
+            const eqIdx = line.indexOf('=');
+            return (
+              <View
+                key={i}
+                style={{ flexDirection: 'row', minHeight: 20, alignItems: 'flex-start' }}
+              >
+                <View
+                  style={{
+                    width: gutterWidth,
+                    backgroundColor: '#1a1a1a',
+                    alignItems: 'flex-end',
+                    paddingRight: 12,
+                    paddingLeft: 8,
+                    borderRightWidth: 1,
+                    borderRightColor: '#1e1e1e',
+                    marginRight: 16,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Text style={{ color: '#3a3a3a', fontFamily: 'monospace', fontSize: 11, lineHeight: 20 }}>
+                    {i + 1}
+                  </Text>
+                </View>
+                <Text style={{ fontFamily: 'monospace', fontSize: 11, lineHeight: 20 }}>
+                  {isComment ? (
+                    <Text style={{ color: '#4b5263' }}>{line}</Text>
+                  ) : isSection ? (
+                    <Text style={{ color: '#e5c07b' }}>{line}</Text>
+                  ) : eqIdx > 0 ? (
+                    <>
+                      <Text style={{ color: '#61afef' }}>{line.slice(0, eqIdx)}</Text>
+                      <Text style={{ color: '#7a8694' }}>{'='}</Text>
+                      <Text style={{ color: '#f5a623' }}>{line.slice(eqIdx + 1)}</Text>
+                    </>
+                  ) : (
+                    <Text style={{ color: '#e2e2e2' }}>{line}</Text>
+                  )}
+                </Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </ScrollView>
+    </View>
+  );
+}
+
+function unescape(s) {
+  return s.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\r/g, '');
 }
 
 function BuildTab({ projectId, navigate }) {
   const { colors } = useTheme();
   const [status, setStatus] = useState(null);
   const [previewCode, setPreviewCode] = useState('');
+  const [cargoToml, setCargoToml] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState('main.rs');
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -627,15 +812,8 @@ function BuildTab({ projectId, navigate }) {
     setError('');
     try {
       const data = await api.previewCode(projectId);
-      const raw = data.source_code ?? data.code ?? null;
-      if (raw) {
-        const unescaped = raw
-          .replace(/\\n/g, '\n')
-          .replace(/\\t/g, '\t')
-          .replace(/\\"/g, '"')
-          .replace(/\\r/g, '');
-        setPreviewCode(unescaped);
-      }
+      if (data.source_code) { setPreviewCode(unescape(data.source_code)); setSelectedFile('main.rs'); }
+      if (data.cargo_toml) setCargoToml(unescape(data.cargo_toml));
       if (data.base_url) setBaseUrl(data.base_url);
     } catch (e) {
       setError(e.message);
@@ -657,18 +835,19 @@ function BuildTab({ projectId, navigate }) {
       const url = `${BASE_URL}/projects/${projectId}/download`;
 
       if (Platform.OS === 'web') {
-        // Browser: fetch blob → object URL → anchor click
         const res = await fetch(url, { headers });
         if (!res.ok) throw new Error(`Download failed (${res.status})`);
+        const disposition = res.headers.get('Content-Disposition') ?? '';
+        const match = disposition.match(/filename="?([^";\s]+)"?/);
+        const filename = match?.[1] ?? `project-${projectId}.zip`;
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = objectUrl;
-        a.download = `project-${projectId}.zip`;
+        a.download = filename;
         a.click();
         URL.revokeObjectURL(objectUrl);
       } else {
-        // Native: FileSystem + Sharing
         const FileSystem = await import('expo-file-system/legacy');
         const Sharing = await import('expo-sharing');
         const dest = `${FileSystem.cacheDirectory}project-${projectId}.zip`;
@@ -784,29 +963,22 @@ function BuildTab({ projectId, navigate }) {
       {/* Action buttons */}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <Win98Button
-          title="Preview Code"
-          variant="secondary"
-          onPress={handlePreview}
-          loading={loadingPreview}
-          icon={<Feather name="code" size={12} color={colors.textMid} />}
-        />
-        <Win98Button
           title="Publish →"
           onPress={handlePublish}
           loading={publishing}
-        />
-        <Win98Button
-          title="Download .zip"
-          variant="secondary"
-          onPress={handleDownload}
-          loading={downloading}
-          icon={<Feather name="download" size={12} color={colors.textMid} />}
         />
         <Win98Button
           title="Sandbox"
           variant="secondary"
           onPress={() => navigate('sandbox')}
           icon={<Feather name="terminal" size={12} color={colors.textMid} />}
+        />
+        <Win98Button
+          title="Refresh"
+          variant="secondary"
+          onPress={handlePreview}
+          loading={loadingPreview}
+          icon={<Feather name="refresh-cw" size={12} color={colors.textMid} />}
         />
       </View>
 
@@ -848,58 +1020,87 @@ function BuildTab({ projectId, navigate }) {
         </View>
       ) : null}
 
-      {/* Generated source preview */}
-      {previewCode ? (
+      {/* IDE-style source viewer */}
+      {(previewCode || cargoToml) ? (
         <View>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 8,
-            }}
-          >
-            <Text
-              style={{
-                color: colors.textDim,
-                fontFamily: 'monospace',
-                fontSize: 9,
-                letterSpacing: 1,
-              }}
-            >
-              GENERATED RUST SOURCE
+          {/* Header row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>
+              GENERATED SOURCE
             </Text>
             {baseUrl ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  backgroundColor: colors.bg3,
-                  borderWidth: 1,
-                  borderTopColor: colors.bevelLight,
-                  borderLeftColor: colors.bevelLight,
-                  borderBottomColor: colors.bevelDark,
-                  borderRightColor: colors.bevelDark,
-                  paddingHorizontal: 7,
-                  paddingVertical: 3,
-                }}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.bg3, borderWidth: 1, borderTopColor: colors.bevelLight, borderLeftColor: colors.bevelLight, borderBottomColor: colors.bevelDark, borderRightColor: colors.bevelDark, paddingHorizontal: 7, paddingVertical: 3 }}>
                 <Feather name="link" size={9} color={colors.textDim} />
-                <Text
-                  style={{
-                    color: colors.textDim,
-                    fontFamily: 'monospace',
-                    fontSize: 9,
-                  }}
-                  numberOfLines={1}
-                >
-                  {baseUrl}
-                </Text>
+                <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9 }} numberOfLines={1}>{baseUrl}</Text>
               </View>
             ) : null}
           </View>
-          <RustCodeViewer code={previewCode} filename="main.rs" />
+
+          {/* IDE split: file tree + code panel */}
+          <View style={{ flexDirection: 'row', borderWidth: 1, borderTopColor: '#1a1a1a', borderLeftColor: '#1a1a1a', borderBottomColor: '#333', borderRightColor: '#333', overflow: 'hidden' }}>
+
+            {/* File tree panel */}
+            <View style={{ width: 190, backgroundColor: '#0d0d0d', borderRightWidth: 1, borderRightColor: '#1e1e1e' }}>
+              {/* Explorer header */}
+              <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' }}>
+                <Text style={{ color: '#3a3a3a', fontFamily: 'monospace', fontSize: 9, letterSpacing: 2 }}>EXPLORER</Text>
+              </View>
+
+              {/* Tree rows */}
+              <View style={{ paddingVertical: 6 }}>
+                {/* Root folder */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4 }}>
+                  <Feather name="chevron-down" size={10} color="#4b5263" />
+                  <Feather name="folder" size={12} color="#e5c07b" />
+                  <Text style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }} numberOfLines={1}>
+                    {projectId.slice(0, 8)}
+                  </Text>
+                </View>
+
+                {/* Cargo.toml */}
+                {cargoToml ? (
+                  <TouchableOpacity
+                    onPress={() => setSelectedFile('Cargo.toml')}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 28, backgroundColor: selectedFile === 'Cargo.toml' ? '#1a2a1a' : 'transparent' }}
+                  >
+                    <Feather name="file-text" size={11} color={selectedFile === 'Cargo.toml' ? '#00c97a' : '#4b5263'} />
+                    <Text style={{ color: selectedFile === 'Cargo.toml' ? '#00c97a' : '#7a8694', fontFamily: 'monospace', fontSize: 11 }}>
+                      Cargo.toml
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                {/* src/ folder */}
+                {previewCode ? (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 28 }}>
+                      <Feather name="chevron-down" size={10} color="#4b5263" />
+                      <Feather name="folder" size={12} color="#e5c07b" />
+                      <Text style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }}>src</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedFile('main.rs')}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 46, backgroundColor: selectedFile === 'main.rs' ? '#1a2a1a' : 'transparent' }}
+                    >
+                      <Feather name="file" size={11} color={selectedFile === 'main.rs' ? '#00c97a' : '#4b5263'} />
+                      <Text style={{ color: selectedFile === 'main.rs' ? '#00c97a' : '#7a8694', fontFamily: 'monospace', fontSize: 11 }}>
+                        main.rs
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Code panel */}
+            <View style={{ flex: 1, backgroundColor: '#050505' }}>
+              {selectedFile === 'main.rs' && previewCode ? (
+                <RustCodeViewer code={previewCode} filename="main.rs" onDownload={handleDownload} />
+              ) : selectedFile === 'Cargo.toml' && cargoToml ? (
+                <TomlViewer code={cargoToml} onDownload={handleDownload} />
+              ) : null}
+            </View>
+          </View>
         </View>
       ) : null}
     </ScrollView>

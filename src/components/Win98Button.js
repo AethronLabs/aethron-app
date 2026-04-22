@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { TouchableOpacity, Text, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
-export default function Win98Button({ title, onPress, loading, variant = 'primary', style, icon }) {
+export default function Win98Button({ title, onPress, loading, disabled, variant = 'primary', style, icon }) {
   const { colors } = useTheme();
   const [pressed, setPressed] = useState(false);
   const isPrimary = variant === 'primary';
+  const isDisabled = loading || disabled;
   const s = getStyles(colors);
 
   return (
@@ -13,13 +14,13 @@ export default function Win98Button({ title, onPress, loading, variant = 'primar
       onPress={onPress}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
-      disabled={loading}
+      disabled={isDisabled}
       activeOpacity={1}
       style={[
         s.btn,
         isPrimary ? s.primary : s.secondary,
-        pressed && (isPrimary ? s.primaryPressed : s.secondaryPressed),
-        loading && s.disabled,
+        pressed && !isDisabled && (isPrimary ? s.primaryPressed : s.secondaryPressed),
+        isDisabled && s.disabled,
         style,
       ]}
     >

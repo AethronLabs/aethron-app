@@ -71,7 +71,7 @@ export function AppSidebar() {
     setCreating(true);
     setCreateError('');
     try {
-      await api.createProject({
+      const created = await api.createProject({
         name: newProjectName.trim(),
         base_url: newProjectUrl.trim(),
       });
@@ -79,6 +79,9 @@ export function AppSidebar() {
       setShowNewProject(false);
       setNewProjectName('');
       setNewProjectUrl('');
+      if (created?.id) {
+        navigate('project', { id: created.id, name: created.name ?? newProjectName.trim() });
+      }
     } catch (e) {
       setCreateError(e.message);
     } finally {
@@ -111,14 +114,8 @@ export function AppSidebar() {
       <Sidebar>
         {/* Logo + collapse trigger */}
         <SidebarHeader>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            {open ? (
+          {open ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                 <Text
                   style={{
@@ -131,32 +128,17 @@ export function AppSidebar() {
                 >
                   ÆTHRON
                 </Text>
-                <Text
-                  style={{
-                    color: colors.accent,
-                    fontFamily: 'monospace',
-                    fontSize: 14,
-                    fontWeight: '700',
-                  }}
-                >
+                <Text style={{ color: colors.accent, fontFamily: 'monospace', fontSize: 14, fontWeight: '700' }}>
                   .
                 </Text>
               </View>
-            ) : (
-              <Text
-                style={{
-                  color: colors.accent,
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                  fontWeight: '700',
-                  letterSpacing: 1,
-                }}
-              >
-                Æ
-              </Text>
-            )}
-            <SidebarTrigger />
-          </View>
+              <SidebarTrigger />
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center' }}>
+              <SidebarTrigger />
+            </View>
+          )}
         </SidebarHeader>
 
         <SidebarContent>
@@ -236,6 +218,36 @@ export function AppSidebar() {
             }}
           />
 
+          {/* Dashboard */}
+          <SidebarGroup>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  icon={
+                    <Feather
+                      name="grid"
+                      size={14}
+                      color={screen === 'dashboard' ? colors.accent : colors.textMid}
+                    />
+                  }
+                  label="Dashboard"
+                  isActive={screen === 'dashboard'}
+                  onPress={() => navigate('dashboard')}
+                />
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+
+          {/* Divider */}
+          <View
+            style={{
+              height: 1,
+              backgroundColor: colors.border,
+              marginHorizontal: 12,
+              marginVertical: 4,
+            }}
+          />
+
           {/* Projects list */}
           <SidebarGroup>
             <SidebarGroupLabel>PROJECTS</SidebarGroupLabel>
@@ -257,33 +269,46 @@ export function AppSidebar() {
                     </Text>
                   ) : null
                 ) : (
-                  filteredProjects.map((project) => (
-                    <SidebarMenuItem key={project.id}>
-                      <SidebarMenuButton
-                        icon={
-                          <Feather
-                            name="folder"
-                            size={13}
-                            color={
-                              screen === 'project' && params.id === project.id
-                                ? colors.accent
-                                : colors.textMid
-                            }
-                          />
-                        }
-                        label={project.name}
-                        isActive={
-                          screen === 'project' && params.id === project.id
-                        }
-                        onPress={() =>
-                          navigate('project', {
-                            id: project.id,
-                            name: project.name,
-                          })
-                        }
-                      />
-                    </SidebarMenuItem>
-                  ))
+                  filteredProjects.map((project) => {
+                    const isActive = screen === 'project' && params.id === project.id;
+                    return (
+                      <SidebarMenuItem key={project.id}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ flex: 1 }}>
+                            <SidebarMenuButton
+                              icon={
+                                <Feather
+                                  name="folder"
+                                  size={13}
+                                  color={isActive ? colors.accent : colors.textMid}
+                                />
+                              }
+                              label={project.name}
+                              isActive={isActive}
+                              onPress={() =>
+                                navigate('project', { id: project.id, name: project.name })
+                              }
+                            />
+                          </View>
+                          {open ? (
+                            <TouchableOpacity
+                              onPress={async () => {
+                                try {
+                                  await api.deleteProject(project.id);
+                                  if (isActive) navigate('dashboard');
+                                  await loadProjects();
+                                } catch {}
+                              }}
+                              style={{ padding: 8 }}
+                              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                            >
+                              <Feather name="trash-2" size={11} color={colors.textDim} />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      </SidebarMenuItem>
+                    );
+                  })
                 )}
               </SidebarMenu>
             </SidebarGroupContent>

@@ -89,8 +89,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  generateCommands: (id) => req(`/projects/${id}/generate-commands`, { method: 'POST' }),
 
-  previewCode: (id) => req(`/projects/${id}/preview`, { method: 'POST' }),
+  generateCode: (id) => req(`/projects/${id}/generate-code`, { method: 'POST' }),
+  previewCode: (id) => req(`/projects/${id}/preview`),
   publish: (id) => req(`/projects/${id}/publish`, { method: 'POST' }),
   getStatus: (id) => req(`/projects/${id}/status`),
   downloadSource: (id) => req(`/projects/${id}/download`),
