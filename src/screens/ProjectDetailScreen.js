@@ -10,7 +10,8 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigation } from '../context/NavigationContext';
-import { api } from '../utils/api';
+import { Platform } from 'react-native';
+import { api, getAuthHeaders, BASE_URL } from '../utils/api';
 import Win98Button from '../components/Win98Button';
 import RustCodeViewer from '../components/RustCodeViewer';
 
@@ -610,6 +611,7 @@ function BuildTab({ projectId, navigate }) {
   const [baseUrl, setBaseUrl] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -646,6 +648,47 @@ function BuildTab({ projectId, navigate }) {
     loadStatus();
     handlePreview();
   }, [projectId]);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setError('');
+    try {
+      const headers = await getAuthHeaders();
+      const url = `${BASE_URL}/projects/${projectId}/download`;
+
+      if (Platform.OS === 'web') {
+        // Browser: fetch blob → object URL → anchor click
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error(`Download failed (${res.status})`);
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = `project-${projectId}.zip`;
+        a.click();
+        URL.revokeObjectURL(objectUrl);
+      } else {
+        // Native: FileSystem + Sharing
+        const FileSystem = await import('expo-file-system/legacy');
+        const Sharing = await import('expo-sharing');
+        const dest = `${FileSystem.cacheDirectory}project-${projectId}.zip`;
+        const { status, uri } = await FileSystem.downloadAsync(url, dest, { headers });
+        if (status !== 200) throw new Error(`Download failed (${status})`);
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/zip',
+            dialogTitle: 'Save Project Source',
+            UTI: 'public.zip-archive',
+          });
+        }
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const handlePublish = async () => {
     setPublishing(true);
@@ -751,6 +794,13 @@ function BuildTab({ projectId, navigate }) {
           title="Publish →"
           onPress={handlePublish}
           loading={publishing}
+        />
+        <Win98Button
+          title="Download .zip"
+          variant="secondary"
+          onPress={handleDownload}
+          loading={downloading}
+          icon={<Feather name="download" size={12} color={colors.textMid} />}
         />
         <Win98Button
           title="Sandbox"

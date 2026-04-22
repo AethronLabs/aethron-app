@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 async function getToken() {
   // Always refresh to ensure the token isn't stale
@@ -22,6 +22,11 @@ async function getToken() {
 
   console.log('[api] Token present, expires in', expiresAt ? expiresAt - nowSecs : '?', 's');
   return session.access_token;
+}
+
+export async function getAuthHeaders() {
+  const token = await getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function req(path, options = {}) {
