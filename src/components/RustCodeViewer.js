@@ -179,14 +179,13 @@ function tokenizeSource(code) {
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
-export default function RustCodeViewer({ code, filename = 'main.rs', onDownload }) {
+export default function RustCodeViewer({ code, filename = 'main.rs', onDownload, embedded = false }) {
   const { colors } = useTheme();
 
   const tokenizedLines = useMemo(() => tokenizeSource(code), [code]);
   const lineCount = tokenizedLines.length;
   const gutterWidth = String(lineCount).length * 9 + 16;
 
-  // Estimate content width for horizontal scroll
   const maxLen = useMemo(
     () => Math.max(...code.split('\n').map((l) => l.length), 40),
     [code]
@@ -197,109 +196,20 @@ export default function RustCodeViewer({ code, filename = 'main.rs', onDownload 
     Share.share({ message: code, title: filename }).catch(() => {});
   };
 
-  return (
-    <View
-      style={{
-        borderWidth: 1,
-        borderTopColor: colors.bevelDark,
-        borderLeftColor: colors.bevelDark,
-        borderBottomColor: colors.bevelLight,
-        borderRightColor: colors.bevelLight,
-        overflow: 'hidden',
-      }}
+  const codeArea = (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      bounces={false}
+      style={{ backgroundColor: C.bg, flex: embedded ? 1 : undefined }}
     >
-      {/* ── Title bar ── */}
-      <View
-        style={{
-          backgroundColor: colors.bg3,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 12,
-          paddingVertical: 7,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {/* Rust crab accent dot */}
-          <View
-            style={{ width: 8, height: 8, backgroundColor: '#f5a623' }}
-          />
-          <Text
-            style={{
-              color: colors.textDim,
-              fontFamily: 'monospace',
-              fontSize: 9,
-              letterSpacing: 1,
-            }}
-          >
-            {filename} — {lineCount} {lineCount === 1 ? 'line' : 'lines'}
-          </Text>
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {onDownload ? (
-            <TouchableOpacity
-              onPress={onDownload}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 5,
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderWidth: 1,
-                borderTopColor: colors.bevelLight,
-                borderLeftColor: colors.bevelLight,
-                borderBottomColor: colors.bevelDark,
-                borderRightColor: colors.bevelDark,
-                backgroundColor: colors.bg3,
-              }}
-            >
-              <Feather name="download" size={10} color={colors.textMid} />
-              <Text style={{ color: colors.textMid, fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>
-                Download
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            onPress={handleShare}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderWidth: 1,
-              borderTopColor: colors.bevelLight,
-              borderLeftColor: colors.bevelLight,
-              borderBottomColor: colors.bevelDark,
-              borderRightColor: colors.bevelDark,
-              backgroundColor: colors.bg3,
-            }}
-          >
-            <Feather name="share-2" size={10} color={colors.textMid} />
-            <Text style={{ color: colors.textMid, fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>
-              Share
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* ── Code area ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        bounces={false}
-        style={{ backgroundColor: C.bg }}
-      >
-        <View style={{ width: contentWidth }}>
-          <ScrollView
-            nestedScrollEnabled
-            showsVerticalScrollIndicator={false}
-            style={{ maxHeight: 420 }}
-            contentContainerStyle={{ paddingVertical: 10 }}
-          >
+      <View style={{ width: contentWidth }}>
+        <ScrollView
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          style={embedded ? { flex: 1 } : { maxHeight: 420 }}
+          contentContainerStyle={{ paddingVertical: 10 }}
+        >
             {tokenizedLines.map((lineTokens, lineIdx) => (
               <View
                 key={lineIdx}
@@ -351,6 +261,60 @@ export default function RustCodeViewer({ code, filename = 'main.rs', onDownload 
           </ScrollView>
         </View>
       </ScrollView>
+  );
+
+  if (embedded) return codeArea;
+
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderTopColor: colors.bevelDark,
+        borderLeftColor: colors.bevelDark,
+        borderBottomColor: colors.bevelLight,
+        borderRightColor: colors.bevelLight,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Title bar */}
+      <View
+        style={{
+          backgroundColor: colors.bg3,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 12,
+          paddingVertical: 7,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 8, height: 8, backgroundColor: '#f5a623' }} />
+          <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>
+            {filename} — {lineCount} {lineCount === 1 ? 'line' : 'lines'}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {onDownload ? (
+            <TouchableOpacity
+              onPress={onDownload}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderTopColor: colors.bevelLight, borderLeftColor: colors.bevelLight, borderBottomColor: colors.bevelDark, borderRightColor: colors.bevelDark, backgroundColor: colors.bg3 }}
+            >
+              <Feather name="download" size={10} color={colors.textMid} />
+              <Text style={{ color: colors.textMid, fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>Download</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            onPress={handleShare}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderTopColor: colors.bevelLight, borderLeftColor: colors.bevelLight, borderBottomColor: colors.bevelDark, borderRightColor: colors.bevelDark, backgroundColor: colors.bg3 }}
+          >
+            <Feather name="share-2" size={10} color={colors.textMid} />
+            <Text style={{ color: colors.textMid, fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>Share</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      {codeArea}
     </View>
   );
 }

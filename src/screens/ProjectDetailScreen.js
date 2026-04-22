@@ -677,33 +677,40 @@ function CommandsTab({ projectId, projectSlug, onGoToBuild, generateOnMount, onG
   );
 }
 
-function TomlViewer({ code, onDownload }) {
+function TomlViewer({ code, onDownload, embedded = false }) {
   const lines = code.split('\n');
   const gutterWidth = String(lines.length).length * 9 + 16;
+
+  const codeArea = (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false} style={{ backgroundColor: '#050505', flex: embedded ? 1 : undefined }}>
+      <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={embedded ? { flex: 1 } : { maxHeight: 420 }} contentContainerStyle={{ paddingVertical: 10 }}>
+        {lines.map((line, i) => {
+          const isSection = /^\s*\[/.test(line);
+          const isComment = /^\s*#/.test(line);
+          const eqIdx = line.indexOf('=');
+          return (
+            <View key={i} style={{ flexDirection: 'row', minHeight: 20, alignItems: 'flex-start' }}>
+              <View style={{ width: gutterWidth, backgroundColor: '#1a1a1a', alignItems: 'flex-end', paddingRight: 12, paddingLeft: 8, borderRightWidth: 1, borderRightColor: '#1e1e1e', marginRight: 16, flexShrink: 0 }}>
+                <Text style={{ color: '#3a3a3a', fontFamily: 'monospace', fontSize: 11, lineHeight: 20 }}>{i + 1}</Text>
+              </View>
+              <Text style={{ fontFamily: 'monospace', fontSize: 11, lineHeight: 20 }}>
+                {isComment ? <Text style={{ color: '#4b5263' }}>{line}</Text>
+                  : isSection ? <Text style={{ color: '#e5c07b' }}>{line}</Text>
+                  : eqIdx > 0 ? <><Text style={{ color: '#61afef' }}>{line.slice(0, eqIdx)}</Text><Text style={{ color: '#7a8694' }}>{'='}</Text><Text style={{ color: '#f5a623' }}>{line.slice(eqIdx + 1)}</Text></>
+                  : <Text style={{ color: '#e2e2e2' }}>{line}</Text>}
+              </Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </ScrollView>
+  );
+
+  if (embedded) return codeArea;
+
   return (
-    <View
-      style={{
-        borderWidth: 1,
-        borderTopColor: '#1a1a1a',
-        borderLeftColor: '#1a1a1a',
-        borderBottomColor: '#333',
-        borderRightColor: '#333',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Title bar */}
-      <View
-        style={{
-          backgroundColor: '#1a1a1a',
-          borderBottomWidth: 1,
-          borderBottomColor: '#222',
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 12,
-          paddingVertical: 7,
-        }}
-      >
+    <View style={{ borderWidth: 1, borderTopColor: '#1a1a1a', borderLeftColor: '#1a1a1a', borderBottomColor: '#333', borderRightColor: '#333', overflow: 'hidden' }}>
+      <View style={{ backgroundColor: '#1a1a1a', borderBottomWidth: 1, borderBottomColor: '#222', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 7 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ width: 8, height: 8, backgroundColor: '#e5c07b' }} />
           <Text style={{ color: '#4b5263', fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>
@@ -711,74 +718,13 @@ function TomlViewer({ code, onDownload }) {
           </Text>
         </View>
         {onDownload ? (
-          <TouchableOpacity
-            onPress={onDownload}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}
-          >
+          <TouchableOpacity onPress={onDownload} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}>
             <Feather name="download" size={10} color="#7a8694" />
             <Text style={{ color: '#7a8694', fontFamily: 'monospace', fontSize: 9, letterSpacing: 0.5 }}>Download</Text>
           </TouchableOpacity>
         ) : null}
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        bounces={false}
-        style={{ backgroundColor: '#050505' }}
-      >
-        <ScrollView
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-          style={{ maxHeight: 420 }}
-          contentContainerStyle={{ paddingVertical: 10 }}
-        >
-          {lines.map((line, i) => {
-            const isSection = /^\s*\[/.test(line);
-            const isComment = /^\s*#/.test(line);
-            const eqIdx = line.indexOf('=');
-            return (
-              <View
-                key={i}
-                style={{ flexDirection: 'row', minHeight: 20, alignItems: 'flex-start' }}
-              >
-                <View
-                  style={{
-                    width: gutterWidth,
-                    backgroundColor: '#1a1a1a',
-                    alignItems: 'flex-end',
-                    paddingRight: 12,
-                    paddingLeft: 8,
-                    borderRightWidth: 1,
-                    borderRightColor: '#1e1e1e',
-                    marginRight: 16,
-                    flexShrink: 0,
-                  }}
-                >
-                  <Text style={{ color: '#3a3a3a', fontFamily: 'monospace', fontSize: 11, lineHeight: 20 }}>
-                    {i + 1}
-                  </Text>
-                </View>
-                <Text style={{ fontFamily: 'monospace', fontSize: 11, lineHeight: 20 }}>
-                  {isComment ? (
-                    <Text style={{ color: '#4b5263' }}>{line}</Text>
-                  ) : isSection ? (
-                    <Text style={{ color: '#e5c07b' }}>{line}</Text>
-                  ) : eqIdx > 0 ? (
-                    <>
-                      <Text style={{ color: '#61afef' }}>{line.slice(0, eqIdx)}</Text>
-                      <Text style={{ color: '#7a8694' }}>{'='}</Text>
-                      <Text style={{ color: '#f5a623' }}>{line.slice(eqIdx + 1)}</Text>
-                    </>
-                  ) : (
-                    <Text style={{ color: '#e2e2e2' }}>{line}</Text>
-                  )}
-                </Text>
-              </View>
-            );
-          })}
-        </ScrollView>
-      </ScrollView>
+      {codeArea}
     </View>
   );
 }
@@ -1093,11 +1039,41 @@ function BuildTab({ projectId, navigate }) {
             </View>
 
             {/* Code panel */}
-            <View style={{ flex: 1, backgroundColor: '#050505' }}>
+            <View style={{ flex: 1, flexDirection: 'column', backgroundColor: '#050505' }}>
+              {/* Integrated tab bar */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111', borderBottomWidth: 1, borderBottomColor: '#1e1e1e', paddingHorizontal: 14, paddingVertical: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 8, height: 8, backgroundColor: selectedFile === 'main.rs' ? '#f5a623' : '#e5c07b' }} />
+                  <Text style={{ color: '#aaa', fontFamily: 'monospace', fontSize: 10 }}>
+                    {selectedFile}
+                  </Text>
+                  <Text style={{ color: '#444', fontFamily: 'monospace', fontSize: 9 }}>
+                    — {(selectedFile === 'main.rs' ? previewCode : cargoToml)?.split('\n').length ?? 0} lines
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity onPress={handleDownload} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}>
+                    <Feather name="download" size={10} color="#7a8694" />
+                    <Text style={{ color: '#7a8694', fontFamily: 'monospace', fontSize: 9 }}>Download</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const { Share } = require('react-native');
+                      Share.share({ message: selectedFile === 'main.rs' ? previewCode : cargoToml, title: selectedFile }).catch(() => {});
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}
+                  >
+                    <Feather name="share-2" size={10} color="#7a8694" />
+                    <Text style={{ color: '#7a8694', fontFamily: 'monospace', fontSize: 9 }}>Share</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Code content — embedded (no own border/title bar) */}
               {selectedFile === 'main.rs' && previewCode ? (
-                <RustCodeViewer code={previewCode} filename="main.rs" onDownload={handleDownload} />
+                <RustCodeViewer code={previewCode} filename="main.rs" embedded />
               ) : selectedFile === 'Cargo.toml' && cargoToml ? (
-                <TomlViewer code={cargoToml} onDownload={handleDownload} />
+                <TomlViewer code={cargoToml} embedded />
               ) : null}
             </View>
           </View>
