@@ -375,28 +375,35 @@ function CommandsTab({ projectId, projectSlug, onGoToBuild, generateOnMount, onG
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const abortRef = React.useRef(null);
+
   useEffect(() => {
+    abortRef.current = { cancelled: false };
+    const current = abortRef.current;
     if (generateOnMount) {
-      runGenerate();
+      runGenerate(current);
     } else {
       loadCommands();
     }
+    return () => { current.cancelled = true; };
   }, [projectId]);
 
-  const runGenerate = async () => {
+  const runGenerate = async (abort) => {
     setLoading(false);
     setGenerating(true);
     setGenerateError('');
     try {
       await api.generateCommands(projectId);
+      if (abort?.cancelled) return;
       onGenerateDone?.();
       await loadCommands();
     } catch (e) {
+      if (abort?.cancelled) return;
       setGenerateError(e.message);
       onGenerateDone?.();
       await loadCommands();
     } finally {
-      setGenerating(false);
+      if (!abort?.cancelled) setGenerating(false);
     }
   };
 
@@ -659,11 +666,14 @@ function CommandsTab({ projectId, projectSlug, onGoToBuild, generateOnMount, onG
             <Win98Button
               title="Generate Code →"
               onPress={async () => {
+                const current = abortRef.current;
                 setGeneratingCode(true);
                 try {
                   await api.generateCode(projectId);
+                  if (current?.cancelled) return;
                   onGoToBuild();
                 } catch (e) {
+                  if (current?.cancelled) return;
                   setGenerateError(e.message);
                   setGeneratingCode(false);
                 }
@@ -733,43 +743,152 @@ function unescape(s) {
   return s.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\r/g, '');
 }
 
-function BuildingAnimation({ colors }) {
-  const [dots, setDots] = React.useState(0);
-  const [barWidth, setBarWidth] = React.useState(0);
+const OS_TABS = [
+  { key: 'mac', label: 'macOS', icon: 'monitor' },
+  { key: 'linux', label: 'Linux', icon: 'terminal' },
+  { key: 'windows', label: 'Windows', icon: 'grid' },
+  { key: 'shell_script', label: 'Script', icon: 'code' },
+];
 
-  useEffect(() => {
-    const dotTimer = setInterval(() => setDots((d) => (d + 1) % 4), 400);
-    const barTimer = setInterval(() => setBarWidth((w) => (w >= 100 ? 0 : w + 2)), 50);
-    return () => { clearInterval(dotTimer); clearInterval(barTimer); };
-  }, []);
+function InstallTabs({ install, colors }) {
+  const [activeOs, setActiveOs] = useState('mac');
+  const [copied, setCopied] = useState(false);
+  const command = install[activeOs];
+
+  const handleCopy = () => {
+    if (!command) return;
+    if (Platform.OS === 'web') {
+      navigator.clipboard?.writeText(command).catch(() => {});
+    } else {
+      const { Clipboard } = require('react-native');
+      Clipboard?.setString?.(command);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <View
       style={{
-        backgroundColor: colors.bg2,
+        backgroundColor: colors.bg3,
         borderWidth: 1,
-        borderTopColor: colors.bevelLight,
-        borderLeftColor: colors.bevelLight,
-        borderBottomColor: colors.bevelDark,
-        borderRightColor: colors.bevelDark,
-        padding: 20,
-        alignItems: 'center',
-        gap: 14,
+        borderTopColor: colors.bevelDark,
+        borderLeftColor: colors.bevelDark,
+        borderBottomColor: colors.bevelLight,
+        borderRightColor: colors.bevelLight,
+        overflow: 'hidden',
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <ActivityIndicator size="small" color="#f0c040" />
-        <Text style={{ color: '#f0c040', fontFamily: 'monospace', fontSize: 13, fontWeight: '700' }}>
-          BUILDING{'.'.repeat(dots)}
-        </Text>
+      {/* OS tab bar */}
+      <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        {OS_TABS.filter((t) => install[t.key]).map((tab) => {
+          const active = activeOs === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              onPress={() => { setActiveOs(tab.key); setCopied(false); }}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 5,
+                paddingVertical: 8,
+                backgroundColor: active ? colors.bg2 : 'transparent',
+                borderBottomWidth: active ? 2 : 0,
+                borderBottomColor: colors.accent,
+              }}
+            >
+              <Feather name={tab.icon} size={11} color={active ? colors.accent : colors.textDim} />
+              <Text
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  fontWeight: '700',
+                  letterSpacing: 0.5,
+                  color: active ? colors.accent : colors.textDim,
+                }}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-      {/* Progress bar */}
-      <View style={{ width: '100%', height: 4, backgroundColor: colors.bg3, overflow: 'hidden' }}>
-        <View style={{ width: `${barWidth}%`, height: 4, backgroundColor: '#f0c040' }} />
+
+      {/* Command display with inline copy */}
+      <View style={{ padding: 10 }}>
+        <View
+          style={{
+            backgroundColor: '#0a0a0a',
+            borderWidth: 1,
+            borderTopColor: colors.bevelDark,
+            borderLeftColor: colors.bevelDark,
+            borderBottomColor: colors.bevelLight,
+            borderRightColor: colors.bevelLight,
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}
+        >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1, padding: 10 }}>
+            <Text
+              style={{ color: colors.accent, fontFamily: 'monospace', fontSize: 10, lineHeight: 16 }}
+              selectable
+            >
+              <Text style={{ color: colors.textDim }}>$ </Text>
+              {command ?? 'N/A'}
+            </Text>
+          </ScrollView>
+          <TouchableOpacity
+            onPress={handleCopy}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              marginRight: 6,
+              borderWidth: 1,
+              borderTopColor: copied ? 'rgba(0,201,122,0.4)' : '#333',
+              borderLeftColor: copied ? 'rgba(0,201,122,0.4)' : '#333',
+              borderBottomColor: copied ? 'rgba(0,201,122,0.2)' : '#111',
+              borderRightColor: copied ? 'rgba(0,201,122,0.2)' : '#111',
+              backgroundColor: copied ? 'rgba(0,201,122,0.1)' : '#1a1a1a',
+            }}
+          >
+            <Feather name={copied ? 'check' : 'copy'} size={11} color={copied ? colors.accent : '#aaa'} />
+            <Text style={{ fontFamily: 'monospace', fontSize: 9, fontWeight: '700', color: copied ? colors.accent : '#aaa' }}>
+              {copied ? 'Copied!' : 'Copy'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, textAlign: 'center' }}>
-        Pushing to GitHub and compiling Rust binary...
-      </Text>
+    </View>
+  );
+}
+
+function BuildingDots() {
+  const [dots, setDots] = React.useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setDots((d) => (d + 1) % 4), 400);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <Text style={{ color: '#f0c040', fontFamily: 'monospace', fontSize: 12, fontWeight: '700' }}>
+      BUILDING{'.'.repeat(dots)}
+    </Text>
+  );
+}
+
+function BuildingBar() {
+  const [barWidth, setBarWidth] = React.useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setBarWidth((w) => (w >= 100 ? 0 : w + 2)), 50);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <View style={{ width: '100%', height: 3, backgroundColor: '#1a1a1a', overflow: 'hidden' }}>
+      <View style={{ width: `${barWidth}%`, height: 3, backgroundColor: '#f0c040' }} />
     </View>
   );
 }
@@ -916,108 +1035,41 @@ function BuildTab({ projectId, navigate }) {
   const isReady = status?.status === 'ready' || status?.status === 'published';
   const isFailed = status?.status === 'failed';
 
+  const publishLabel = isBuilding ? 'Building...' : isReady ? 'Re-publish →' : 'Publish →';
+
   return (
     <View style={{ flex: 1 }}>
-      {/* Top section: status + buttons (non-scrolling) */}
-      <View style={{ padding: 16, paddingBottom: 0, gap: 12 }}>
-        {/* Build status card */}
-        {isBuilding ? (
-          <BuildingAnimation colors={colors} />
-        ) : status ? (
-          <View
-            style={{
-              backgroundColor: colors.bg2,
-              borderWidth: 1,
-              borderTopColor: colors.bevelLight,
-              borderLeftColor: colors.bevelLight,
-              borderBottomColor: colors.bevelDark,
-              borderRightColor: colors.bevelDark,
-              padding: 14,
-              gap: 10,
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View>
-                <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>
-                  BUILD STATUS
-                </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                  <View
-                    style={{
-                      width: 7,
-                      height: 7,
-                      backgroundColor: isReady ? colors.accent : isFailed ? (colors.red ?? '#ff5555') : colors.textDim,
-                    }}
-                  />
-                  <Text
-                    style={{
-                      color: isReady ? colors.accent : isFailed ? (colors.red ?? '#ff5555') : colors.textMid,
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {(status.status ?? 'IDLE').toUpperCase()}
-                  </Text>
-                  {status.version ? (
-                    <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 10 }}>
-                      v{status.version}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
+      {/* Top controls — fixed, no scroll */}
+      <View style={{ padding: 16, paddingBottom: 12, gap: 10 }}>
+        {/* Status row: inline status + buttons */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          {/* Status indicator */}
+          {isBuilding ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <ActivityIndicator size="small" color="#f0c040" />
+              <BuildingDots />
             </View>
+          ) : status ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 7, height: 7, backgroundColor: isReady ? colors.accent : isFailed ? (colors.red ?? '#ff5555') : colors.textDim }} />
+              <Text style={{ color: isReady ? colors.accent : isFailed ? (colors.red ?? '#ff5555') : colors.textMid, fontFamily: 'monospace', fontSize: 12, fontWeight: '700' }}>
+                {(status.status ?? 'IDLE').toUpperCase()}
+              </Text>
+              {status.version ? (
+                <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 10 }}>v{status.version}</Text>
+              ) : null}
+            </View>
+          ) : null}
 
-            {/* Install URL when ready */}
-            {isReady && status.install_url ? (
-              <View
-                style={{
-                  backgroundColor: colors.bg3,
-                  borderWidth: 1,
-                  borderTopColor: colors.bevelDark,
-                  borderLeftColor: colors.bevelDark,
-                  borderBottomColor: colors.bevelLight,
-                  borderRightColor: colors.bevelLight,
-                  padding: 10,
-                  gap: 6,
-                }}
-              >
-                <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>
-                  INSTALL
-                </Text>
-                <Text
-                  style={{ color: colors.accent, fontFamily: 'monospace', fontSize: 10 }}
-                  selectable
-                >
-                  curl -fsSL {status.install_url} | sh
-                </Text>
-              </View>
-            ) : null}
+          {/* Action buttons */}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Win98Button title={publishLabel} onPress={handlePublish} loading={publishing} disabled={isBuilding} />
+            <Win98Button title="Refresh" variant="secondary" onPress={() => { loadStatus(); handlePreview(); }} loading={loadingPreview} icon={<Feather name="refresh-cw" size={11} color={colors.textMid} />} />
           </View>
-        ) : null}
-
-        {/* Action buttons */}
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          <Win98Button
-            title={isBuilding ? 'Building...' : 'Publish →'}
-            onPress={handlePublish}
-            loading={publishing}
-            disabled={isBuilding}
-          />
-          <Win98Button
-            title="Sandbox"
-            variant="secondary"
-            onPress={() => navigate('sandbox')}
-            icon={<Feather name="terminal" size={12} color={colors.textMid} />}
-          />
-          <Win98Button
-            title="Refresh"
-            variant="secondary"
-            onPress={() => { loadStatus(); handlePreview(); }}
-            loading={loadingPreview}
-            icon={<Feather name="refresh-cw" size={12} color={colors.textMid} />}
-          />
         </View>
+
+        {/* Building progress bar */}
+        {isBuilding ? <BuildingBar /> : null}
 
         {error ? (
           <View style={{ backgroundColor: colors.redDim, borderWidth: 1, borderColor: 'rgba(255,85,85,0.3)', padding: 8 }}>
@@ -1025,64 +1077,48 @@ function BuildTab({ projectId, navigate }) {
           </View>
         ) : null}
 
-        {success ? (
+        {success && !isReady ? (
           <View style={{ backgroundColor: colors.accentDim, borderWidth: 1, borderColor: 'rgba(0,201,122,0.3)', padding: 8 }}>
             <Text style={{ color: colors.accent, fontFamily: 'monospace', fontSize: 10 }}>✓ {success}</Text>
           </View>
         ) : null}
 
-        {/* Source header */}
-        {(previewCode || cargoToml) ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>
-              GENERATED SOURCE
-            </Text>
-            {baseUrl ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.bg3, borderWidth: 1, borderTopColor: colors.bevelLight, borderLeftColor: colors.bevelLight, borderBottomColor: colors.bevelDark, borderRightColor: colors.bevelDark, paddingHorizontal: 7, paddingVertical: 3 }}>
-                <Feather name="link" size={9} color={colors.textDim} />
-                <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9 }} numberOfLines={1}>{baseUrl}</Text>
-              </View>
-            ) : null}
+        {/* Install section when ready */}
+        {isReady && status.install ? (
+          <InstallTabs install={status.install} colors={colors} />
+        ) : isReady && status.install_url ? (
+          <View style={{ backgroundColor: colors.bg3, borderWidth: 1, borderTopColor: colors.bevelDark, borderLeftColor: colors.bevelDark, borderBottomColor: colors.bevelLight, borderRightColor: colors.bevelLight, padding: 10, gap: 6 }}>
+            <Text style={{ color: colors.textDim, fontFamily: 'monospace', fontSize: 9, letterSpacing: 1 }}>INSTALL</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <Text style={{ color: colors.accent, fontFamily: 'monospace', fontSize: 10 }} selectable>
+                curl -fsSL {status.install_url} | sh
+              </Text>
+            </ScrollView>
           </View>
         ) : null}
       </View>
 
-      {/* IDE section: takes remaining space, code scrolls inside */}
+      {/* IDE section: takes all remaining space */}
       {(previewCode || cargoToml) ? (
-        <View style={{ flex: 1, marginHorizontal: 16, marginBottom: 16, marginTop: 8, borderWidth: 1, borderTopColor: '#1a1a1a', borderLeftColor: '#1a1a1a', borderBottomColor: '#333', borderRightColor: '#333', overflow: 'hidden', flexDirection: 'row' }}>
+        <View style={{ flex: 1, marginHorizontal: 16, marginBottom: 12, borderWidth: 1, borderTopColor: '#1a1a1a', borderLeftColor: '#1a1a1a', borderBottomColor: '#333', borderRightColor: '#333', overflow: 'hidden', flexDirection: 'row' }}>
 
           {/* File tree panel */}
-          <View style={{ width: 190, backgroundColor: '#0d0d0d', borderRightWidth: 1, borderRightColor: '#1e1e1e' }}>
-            {/* Explorer header */}
+          <View style={{ width: 180, backgroundColor: '#0d0d0d', borderRightWidth: 1, borderRightColor: '#1e1e1e' }}>
             <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' }}>
               <Text style={{ color: '#3a3a3a', fontFamily: 'monospace', fontSize: 9, letterSpacing: 2 }}>EXPLORER</Text>
             </View>
-
-            {/* Tree rows */}
             <View style={{ paddingVertical: 6 }}>
-              {/* Root folder */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4 }}>
                 <Feather name="chevron-down" size={10} color="#4b5263" />
                 <Feather name="folder" size={12} color="#e5c07b" />
-                <Text style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }} numberOfLines={1}>
-                  {projectId.slice(0, 8)}
-                </Text>
+                <Text style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }} numberOfLines={1}>{projectId.slice(0, 8)}</Text>
               </View>
-
-              {/* Cargo.toml */}
               {cargoToml ? (
-                <TouchableOpacity
-                  onPress={() => setSelectedFile('Cargo.toml')}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 28, backgroundColor: selectedFile === 'Cargo.toml' ? '#1a2a1a' : 'transparent' }}
-                >
+                <TouchableOpacity onPress={() => setSelectedFile('Cargo.toml')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 28, backgroundColor: selectedFile === 'Cargo.toml' ? '#1a2a1a' : 'transparent' }}>
                   <Feather name="file-text" size={11} color={selectedFile === 'Cargo.toml' ? '#00c97a' : '#4b5263'} />
-                  <Text style={{ color: selectedFile === 'Cargo.toml' ? '#00c97a' : '#7a8694', fontFamily: 'monospace', fontSize: 11 }}>
-                    Cargo.toml
-                  </Text>
+                  <Text style={{ color: selectedFile === 'Cargo.toml' ? '#00c97a' : '#7a8694', fontFamily: 'monospace', fontSize: 11 }}>Cargo.toml</Text>
                 </TouchableOpacity>
               ) : null}
-
-              {/* src/ folder */}
               {previewCode ? (
                 <>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 28 }}>
@@ -1090,52 +1126,34 @@ function BuildTab({ projectId, navigate }) {
                     <Feather name="folder" size={12} color="#e5c07b" />
                     <Text style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }}>src</Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => setSelectedFile('main.rs')}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 46, backgroundColor: selectedFile === 'main.rs' ? '#1a2a1a' : 'transparent' }}
-                  >
+                  <TouchableOpacity onPress={() => setSelectedFile('main.rs')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, paddingLeft: 46, backgroundColor: selectedFile === 'main.rs' ? '#1a2a1a' : 'transparent' }}>
                     <Feather name="file" size={11} color={selectedFile === 'main.rs' ? '#00c97a' : '#4b5263'} />
-                    <Text style={{ color: selectedFile === 'main.rs' ? '#00c97a' : '#7a8694', fontFamily: 'monospace', fontSize: 11 }}>
-                      main.rs
-                    </Text>
+                    <Text style={{ color: selectedFile === 'main.rs' ? '#00c97a' : '#7a8694', fontFamily: 'monospace', fontSize: 11 }}>main.rs</Text>
                   </TouchableOpacity>
                 </>
               ) : null}
             </View>
           </View>
 
-          {/* Code panel — flex: 1 fills remaining height since parent is flex: 1 */}
+          {/* Code panel */}
           <View style={{ flex: 1, flexDirection: 'column', backgroundColor: '#050505' }}>
-            {/* Integrated tab bar */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111', borderBottomWidth: 1, borderBottomColor: '#1e1e1e', paddingHorizontal: 14, paddingVertical: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ width: 8, height: 8, backgroundColor: selectedFile === 'main.rs' ? '#f5a623' : '#e5c07b' }} />
-                <Text style={{ color: '#aaa', fontFamily: 'monospace', fontSize: 10 }}>
-                  {selectedFile}
-                </Text>
-                <Text style={{ color: '#444', fontFamily: 'monospace', fontSize: 9 }}>
-                  — {(selectedFile === 'main.rs' ? previewCode : cargoToml)?.split('\n').length ?? 0} lines
-                </Text>
+                <Text style={{ color: '#aaa', fontFamily: 'monospace', fontSize: 10 }}>{selectedFile}</Text>
+                <Text style={{ color: '#444', fontFamily: 'monospace', fontSize: 9 }}>— {(selectedFile === 'main.rs' ? previewCode : cargoToml)?.split('\n').length ?? 0} lines</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <TouchableOpacity onPress={handleDownload} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}>
                   <Feather name="download" size={10} color="#7a8694" />
                   <Text style={{ color: '#7a8694', fontFamily: 'monospace', fontSize: 9 }}>Download</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    const { Share } = require('react-native');
-                    Share.share({ message: selectedFile === 'main.rs' ? previewCode : cargoToml, title: selectedFile }).catch(() => {});
-                  }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}
-                >
+                <TouchableOpacity onPress={() => { const { Share } = require('react-native'); Share.share({ message: selectedFile === 'main.rs' ? previewCode : cargoToml, title: selectedFile }).catch(() => {}); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderTopColor: '#333', borderLeftColor: '#333', borderBottomColor: '#111', borderRightColor: '#111', backgroundColor: '#1a1a1a' }}>
                   <Feather name="share-2" size={10} color="#7a8694" />
                   <Text style={{ color: '#7a8694', fontFamily: 'monospace', fontSize: 9 }}>Share</Text>
                 </TouchableOpacity>
               </View>
             </View>
-
-            {/* Code content — embedded, scrolls within this container */}
             {selectedFile === 'main.rs' && previewCode ? (
               <RustCodeViewer code={previewCode} filename="main.rs" embedded />
             ) : selectedFile === 'Cargo.toml' && cargoToml ? (
