@@ -12,6 +12,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useNavigation } from '../context/NavigationContext';
 import { Platform } from 'react-native';
 import { api, getAuthHeaders, BASE_URL } from '../utils/api';
+import { supabase } from '../utils/supabase';
 import Win98Button from '../components/Win98Button';
 import RustCodeViewer from '../components/RustCodeViewer';
 import ShimmerText from '../components/ShimmerText';
@@ -903,11 +904,12 @@ function BuildTab({ projectId, navigate }) {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [polling, setPolling] = useState(false);
+  const [watching, setWatching] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const pollingRef = React.useRef(null);
+  const sseRef = React.useRef(null);
+  const pollRef = React.useRef(null);
 
   const loadStatus = async () => {
     try {
@@ -918,32 +920,95 @@ function BuildTab({ projectId, navigate }) {
     return null;
   };
 
+  const stopWatching = () => {
+    if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setWatching(false);
+  };
+
+  const handleStatusUpdate = (data) => {
+    if (!data) return;
+    const s = data.status;
+    setStatus(data);
+    if (s === 'ready' || s === 'published') {
+      setSuccess('Build complete! Install link is ready.');
+      stopWatching();
+    } else if (s === 'failed') {
+      setError(data.error ?? 'Build failed. Check logs or try again.');
+      stopWatching();
+    }
+  };
+
+  // Fallback: poll every 5s
   const startPolling = () => {
-    stopPolling();
-    setPolling(true);
-    pollingRef.current = setInterval(async () => {
+    if (pollRef.current) return;
+    setWatching(true);
+    pollRef.current = setInterval(async () => {
       const data = await loadStatus();
-      if (data && data.status !== 'building') {
-        stopPolling();
-        if (data.status === 'ready' || data.status === 'published') {
-          setSuccess('Build complete! Install link is ready.');
-        } else if (data.status === 'failed') {
-          setError('Build failed. Check logs or try again.');
-        }
+      if (data && data.status !== 'building' && data.status !== 'uploading') {
+        handleStatusUpdate(data);
       }
     }, 5000);
   };
 
-  const stopPolling = () => {
-    setPolling(false);
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
+  // Primary: SSE stream, falls back to polling
+  const startWatching = async () => {
+    stopWatching();
+    setWatching(true);
+
+    // Try SSE first
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) { startPolling(); return; }
+
+      const es = new EventSource(
+        `${BASE_URL}/projects/${projectId}/status/stream?token=${token}`
+      );
+      sseRef.current = es;
+
+      let connected = false;
+      es.onopen = () => { connected = true; };
+
+      es.addEventListener('status', (e) => {
+        try {
+          const { status: buildStatus, data } = JSON.parse(e.data);
+          const merged = {
+            ...(status ?? {}),
+            status: buildStatus,
+            ...(data?.install ? { install: data.install } : {}),
+            ...(data?.install_url ? { install_url: data.install_url } : {}),
+            ...(data?.version ? { version: data.version } : {}),
+            ...(data?.error ? { error: data.error } : {}),
+          };
+          handleStatusUpdate(merged);
+        } catch {}
+      });
+
+      es.onerror = () => {
+        es.close();
+        sseRef.current = null;
+        // If never connected, SSE endpoint doesn't exist — fall back to polling
+        if (!connected) {
+          startPolling();
+        } else {
+          // Was connected but lost connection — one-time check then poll
+          loadStatus().then((data) => {
+            if (data && data.status !== 'building' && data.status !== 'uploading') {
+              handleStatusUpdate(data);
+            } else {
+              startPolling();
+            }
+          });
+        }
+      };
+    } catch {
+      startPolling();
     }
   };
 
   useEffect(() => {
-    return () => stopPolling();
+    return () => stopWatching();
   }, []);
 
   const handlePreview = async () => {
@@ -965,11 +1030,12 @@ function BuildTab({ projectId, navigate }) {
     const init = async () => {
       const data = await loadStatus();
       handlePreview();
-      if (data && data.status === 'building') {
-        startPolling();
+      if (data && (data.status === 'building' || data.status === 'uploading')) {
+        startWatching();
       }
     };
     init();
+    return () => stopWatching();
   }, [projectId]);
 
   const handleDownload = async () => {
@@ -1015,15 +1081,14 @@ function BuildTab({ projectId, navigate }) {
   };
 
   const handlePublish = async () => {
+    stopWatching();
     setPublishing(true);
     setError('');
     setSuccess('');
     try {
       await api.publish(projectId);
-      const data = await loadStatus();
-      if (data && data.status === 'building') {
-        startPolling();
-      }
+      setStatus((prev) => ({ ...prev, status: 'building' }));
+      startWatching();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1031,11 +1096,11 @@ function BuildTab({ projectId, navigate }) {
     }
   };
 
-  const isBuilding = polling || status?.status === 'building';
+  const isBuilding = watching || status?.status === 'building' || status?.status === 'uploading';
   const isReady = status?.status === 'ready' || status?.status === 'published';
   const isFailed = status?.status === 'failed';
 
-  const publishLabel = isBuilding ? 'Building...' : isReady ? 'Re-publish →' : 'Publish →';
+  const publishLabel = isReady ? 'Re-publish →' : 'Publish →';
 
   return (
     <View style={{ flex: 1 }}>
@@ -1063,7 +1128,7 @@ function BuildTab({ projectId, navigate }) {
 
           {/* Action buttons */}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Win98Button title={publishLabel} onPress={handlePublish} loading={publishing} disabled={isBuilding} />
+            <Win98Button title={publishLabel} onPress={handlePublish} loading={publishing} />
             <Win98Button title="Refresh" variant="secondary" onPress={() => { loadStatus(); handlePreview(); }} loading={loadingPreview} icon={<Feather name="refresh-cw" size={11} color={colors.textMid} />} />
           </View>
         </View>
