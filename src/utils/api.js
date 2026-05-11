@@ -7,20 +7,16 @@ async function getToken() {
   const { data: { session }, error } = await supabase.auth.getSession();
 
   if (error || !session) {
-    console.warn('[api] No session found:', error?.message);
     return null;
   }
 
-  // If token is close to expiry, refresh it
-  const expiresAt = session.expires_at; // unix seconds
+  const expiresAt = session.expires_at;
   const nowSecs = Math.floor(Date.now() / 1000);
   if (expiresAt && expiresAt - nowSecs < 60) {
-    console.log('[api] Token near expiry, refreshing...');
     const { data: refreshed } = await supabase.auth.refreshSession();
     return refreshed.session?.access_token ?? null;
   }
 
-  console.log('[api] Token present, expires in', expiresAt ? expiresAt - nowSecs : '?', 's');
   return session.access_token;
 }
 
@@ -32,10 +28,6 @@ export async function getAuthHeaders() {
 async function req(path, options = {}) {
   const token = await getToken();
 
-  if (!token) {
-    console.error('[api] No token — request will fail:', path);
-  }
-
   // Don't set Content-Type for FormData — fetch sets it automatically with the boundary
   const isFormData = options.body instanceof FormData;
 
@@ -45,11 +37,6 @@ async function req(path, options = {}) {
     ...options.headers,
   };
 
-  console.log(`[api] ${options.method ?? 'GET'} ${BASE_URL}${path}`, {
-    hasToken: !!token,
-    tokenPrefix: token ? token.slice(0, 20) + '...' : null,
-  });
-
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers,
@@ -57,7 +44,6 @@ async function req(path, options = {}) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    console.error(`[api] ${res.status} on ${path}:`, body);
     throw new Error(body || `${res.status} ${res.statusText}`);
   }
 
